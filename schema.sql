@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS papers;
+
+CREATE TABLE papers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    course_code TEXT NOT NULL,
+    semester TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    filename TEXT NOT NULL,
+    upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
