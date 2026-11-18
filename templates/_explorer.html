@@ -1,0 +1,162 @@
+<!-- This recursive macro draws the left folder tree with unique IDs. -->
+{% macro tree_nodes(node, parent='', depth=0) %}
+<ul class="list-unstyled ms-2">
+  {% for name, children in node.items() %}
+  {% set full = parent ~ '/' ~ name if parent else name %}
+  {% set node_id = 'node_' ~ (full|replace(' ', '_')|replace('/', '_')|replace('-', '_')|replace('.', '_')|replace('(', '')|replace(')', '') ~ '_' ~ depth) %}
+  <li class="mb-1">
+    <div class="d-flex align-items-center">
+      <a class="small text-decoration-none" href="{{ url_for('admin' if can_edit else 'teacher', action='update' if can_edit else none, view='explorer' if not can_edit else none, path=full) }}">
+        📁 {{ name }}
+      </a>
+      {% if children %}
+      <button class="btn btn-sm py-0 ms-2" type="button" data-bs-toggle="collapse" data-bs-target="#{{ node_id }}">
+        ▾
+      </button>
+      {% endif %}
+    </div>
+    {% if children %}
+    <div class="collapse" id="{{ node_id }}">{{ tree_nodes(children, full, depth + 1) }}</div>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endmacro %}
+
+<!-- The explorer shows folders, files, and simple file actions. -->
+<div id="explorer" class="border rounded p-3 mb-4" data-edit="{{ 'yes' if can_edit else 'no' }}" style="background: #FCF8F9; border-color: #EADDE2;">
+  <div class="row g-3">
+    <aside class="col-lg-3 d-none d-lg-block border-end" style="border-color: #EADDE2;">
+      <h6 style="color: #581C35; margin-bottom: 15px;">Folders</h6>
+      <div class="explorer-tree">{{ tree_nodes(tree) }}</div>
+    </aside>
+
+    <div class="col-12 col-lg-9">
+      <!-- Toolbar -->
+      <div class="d-flex gap-2 flex-wrap mb-3">
+        <button class="btn btn-outline-secondary btn-sm d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#folderSidebar">☰ Folders</button>
+        <button class="btn btn-outline-secondary btn-sm" onclick="history.back()">Back</button>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin' if can_edit else 'teacher', action='update' if can_edit else none, view='explorer' if not can_edit else none, path=path.rsplit('/', 1)[0]) }}">Up</a>
+        <input id="explorerSearch" class="form-control form-control-sm flex-grow-1" style="width: 180px; max-width: 100%;" placeholder="Search visible items" oninput="filterExplorer()">
+        <button class="btn btn-outline-primary btn-sm" onclick="setExplorerView('grid')">Grid</button>
+        <button class="btn btn-outline-primary btn-sm" onclick="setExplorerView('list')">List</button>
+      </div>
+
+      <!-- Breadcrumb -->
+      <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb small">
+          <li class="breadcrumb-item">
+            <a href="{{ url_for('admin' if can_edit else 'teacher', action='update' if can_edit else none, view='explorer' if not can_edit else none) }}">Academic Years</a>
+          </li>
+          {% for part in path.split('/') if part %}
+          <li class="breadcrumb-item">{{ part }}</li>
+          {% endfor %}
+        </ol>
+      </nav>
+
+      <!-- Items Grid/List -->
+      <div id="explorerItems" class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
+        {% for name in dirs %}
+        {% set next_path = path ~ '/' ~ name if path else name %}
+        <div class="col explorer-item" data-name="{{ name|lower }}">
+          <div class="card h-100">
+            <div class="card-body p-3">
+              <div>📁 <strong>{{ name }}</strong></div>
+              <small class="text-muted">Folder</small>
+              <div class="mt-2">
+                <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin' if can_edit else 'teacher', action='update' if can_edit else none, view='explorer' if not can_edit else none, path=next_path) }}">Open</a>
+                <button class="btn btn-outline-secondary btn-sm" onclick="showDetails('Folder: {{ name|e }}', 'Folder', '—', '—', '—')">Details</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+
+        {% for f in visible_files %}
+        <div class="col explorer-item" data-name="{{ f.name|lower }}" oncontextmenu="return showContext(event, this)">
+          <div class="card h-100">
+            <div class="card-body p-3">
+              <div>📄 <strong class="file-name">{{ f.name }}</strong></div>
+              <small class="text-muted">{{ f.category }} · {{ f.type }} · {{ f.size }} · {{ f.date }}</small>
+              <div class="mt-1"><span class="badge bg-secondary">v{{ f.version }}</span></div>
+              <div class="mt-2 d-flex flex-wrap gap-1">
+                <button class="btn btn-outline-primary btn-sm" onclick="demoOpen('{{ f.name|e }}')">Open</button>
+                <button class="btn btn-outline-secondary btn-sm" onclick="demoDownload('{{ f.name|e }}')">Download</button>
+                <button class="btn btn-outline-info btn-sm" onclick="showDetails('{{ f.name|e }}', '{{ f.category|e }}', '{{ f.uploaded_by|e }}', '{{ f.version }}', '{{ f.hash|e }}')">Details</button>
+                {% if can_edit %}
+                <button class="btn btn-outline-warning btn-sm" onclick="fileAction('rename','{{ f.name|e }}','{{ f.year }}','{{ f.code }}','{{ f.sem }}')">Rename</button>
+                <button class="btn btn-outline-danger btn-sm" onclick="fileAction('delete','{{ f.name|e }}','{{ f.year }}','{{ f.code }}','{{ f.sem }}')">Delete</button>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      {% if not dirs and not visible_files %}
+      <p class="text-muted mt-3 text-center">This folder is empty. Choose a folder from the sidebar.</p>
+      {% endif %}
+
+      {% if can_edit %}
+      <p class="small text-muted mt-3">To create folders, use the Manage Subject Folders section below. To upload files, use the teacher Upload page.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Mobile Sidebar -->
+<div class="offcanvas offcanvas-start" tabindex="-1" id="folderSidebar">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title">Folders</h5>
+    <button class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body explorer-tree">{{ tree_nodes(tree) }}</div>
+</div>
+
+<!-- File Details Offcanvas -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="fileDetails">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title">File Details</h5>
+    <button class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body">
+    <p id="detailName"></p>
+    <p id="detailCategory"></p>
+    <p id="detailUploader"></p>
+    <p id="detailVersion"></p>
+    <p id="detailHash" class="text-break"></p>
+    <h6>Version history</h6>
+    <ul id="detailHistory" class="list-group"></ul>
+  </div>
+</div>
+
+<!-- Context Menu -->
+<div id="contextMenu" class="card shadow-sm position-fixed d-none" style="z-index: 1100; min-width: 180px;">
+  <div class="card-body p-2">
+    <button class="btn btn-light d-block w-100 text-start" onclick="contextOpen()">Open</button>
+    <button class="btn btn-light d-block w-100 text-start" onclick="contextDownload()">Download</button>
+    <button class="btn btn-light d-block w-100 text-start" onclick="contextDetails()">Details</button>
+    {% if can_edit %}
+    <button class="btn btn-light d-block w-100 text-start" onclick="contextNewFolder()">New Folder</button>
+    <button class="btn btn-light d-block w-100 text-start" onclick="contextRename()">Rename</button>
+    <button class="btn btn-light d-block w-100 text-start" onclick="contextDelete()">Delete</button>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Hidden form for file actions -->
+{% if can_edit %}
+<form method="post" action="{{ url_for('file_action') }}" id="fileActionForm" class="d-none">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input name="operation">
+  <input name="filename">
+  <input name="year">
+  <input name="code">
+  <input name="sem">
+  <input name="new_name">
+</form>
+{% endif %}
+
+<!-- Explorer data for JS -->
+<script type="application/json" id="explorerData">{{ files|tojson }}</script>

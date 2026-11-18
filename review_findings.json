@@ -1,0 +1,62 @@
+[
+  {
+    "file": "app.py",
+    "line": 288,
+    "summary": "KeyError when accessing folder_names with a key that may not exist",
+    "failure_scenario": "A subject exists in the subjects list but folder_names dict lacks the (year, sem, code) key (e.g., due to manual data manipulation or a race condition). When a teacher/admin uploads a file to that subject, the check `category not in folder_names[(year, int(sem), code)]` raises KeyError, crashing the request with a 500 error instead of showing a user-friendly message."
+  },
+  {
+    "file": "app.py",
+    "line": 179,
+    "summary": "ValueError on int() conversion of user-controlled 'count' parameter without try/except",
+    "failure_scenario": "An attacker or buggy client submits `count=abc` in the subject wizard form. The line `count = min(int(request.form.get('count', 1)), 12)` raises ValueError, crashing the server with a 500 error. Similar unguarded int() calls exist at lines 200, 214, 232, 307."
+  },
+  {
+    "file": "app.py",
+    "line": 72,
+    "summary": "Substring match in explorer_items causes wrong files to appear under a subject",
+    "failure_scenario": "Two subjects exist with codes 'CS340' and 'CS3401'. When browsing the folder tree for 'CS3401 - Data Structures', the condition `pieces[2] in parts[3]` matches both because 'CS3401' contains 'CS340'. Files from both subjects appear in the explorer, leaking data across courses."
+  },
+  {
+    "file": "templates/_explorer.html",
+    "line": 3,
+    "summary": "Bootstrap collapse ID collision due to lossy string sanitization",
+    "failure_scenario": "Two different folder paths like '2023-2024/1st Year/Sem 3/CS3401 - Data Structures/Namelist' and '2023-2024/1st Year/Sem 3/CS3401-Data Structures/Notes' both sanitize to the same ID 'node202320241stYearSem3CS3401DataStructures...'. Clicking the collapse toggle on one folder incorrectly opens/closes the other, breaking the folder tree navigation."
+  },
+  {
+    "file": "app.py",
+    "line": 6,
+    "summary": "Hardcoded secret key and plaintext passwords in source code",
+    "failure_scenario": "The secret key 'acadvault-demo-key' is committed to source control, allowing anyone with repo access to forge session cookies and impersonate any user. Passwords 'admin123', 'alice123', 'bob123' are stored in plaintext in the users list, enabling credential theft if the code is exposed. No password hashing (bcrypt/scrypt) is used."
+  },
+  {
+    "file": "app.py",
+    "line": 107,
+    "summary": "No CSRF protection on any POST route",
+    "failure_scenario": "An attacker crafts a malicious page that auto-submits a form to `/upload`, `/save-subjects`, `/assign-faculty`, `/file-action`, etc. When a logged-in admin/teacher visits the page, the browser sends their session cookie, executing state-changing actions (creating subjects, assigning faculty, deleting files) without their consent."
+  },
+  {
+    "file": "app.py",
+    "line": 294,
+    "summary": "Allowed file extensions and max size duplicated in Python and JavaScript",
+    "failure_scenario": "Python (line 294) allows ['pdf','docx','pptx','xlsx','csv','jpg','jpeg','png','gif','zip'] with 25MB limit. JavaScript (lines 186, 190) has the same list and limit hardcoded separately. When the allowed types change, updating only one layer causes inconsistent validation: a file accepted by the frontend is rejected by the backend (or vice versa), confusing users."
+  },
+  {
+    "file": "app.py",
+    "line": 8,
+    "summary": "Global mutable state (users, subjects, files, folder_names) is not thread-safe",
+    "failure_scenario": "Under concurrent requests (Flask's default threaded mode), two simultaneous uploads to the same subject can both read the same max version (line 307), then both write version N+1, losing one version. Similarly, `files[:] = [...]` in delete_folder (line 236) and list comprehensions in copy_regulation (line 257) are not atomic, risking data corruption or lost updates under load."
+  },
+  {
+    "file": "app.py",
+    "line": 136,
+    "summary": "Overly complex nested ternary for count parameter parsing",
+    "failure_scenario": "The expression `min(max(int(request.args.get('count', '1')) if request.args.get('count', '1').isdigit() else 1, 1), 12)` is hard to read and maintain. A maintainer modifying the bounds or default value is likely to introduce an off-by-one error. The logic also fails silently for whitespace-padded numbers (e.g., ' 5 ' returns False for isdigit())."
+  },
+  {
+    "file": "app.py",
+    "line": 202,
+    "summary": "Missing KeyError guard when accessing folder_names[key] in add_folder/rename_folder/delete_folder",
+    "failure_scenario": "An admin tries to add/rename/delete a folder for a subject that exists in the subjects list but was never initialized in folder_names (possible if subjects were added via direct list manipulation or copy_regulation missed a case). The `key in folder_names` check passes for the outer dict but the code assumes the key exists; however, if the key is missing, line 202 `folder_names[key].append(name)` raises KeyError."
+  }
+]

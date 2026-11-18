@@ -1,0 +1,481 @@
+{% extends 'base.html' %}
+{% block content %}
+<!-- Welcome Section -->
+<div class="welcome">
+  <h1>Welcome, {{ session['name'] }}</h1>
+  <p>Manage academic years, subjects and course files.</p>
+</div>
+
+<!-- Statistics Cards -->
+<div class="stats">
+  <div class="stat-card">
+    <h2>{{ academic_years|length }}</h2>
+    <p>Academic Years</p>
+  </div>
+  <div class="stat-card">
+    <h2>{{ subjects|length }}</h2>
+    <p>Subjects</p>
+  </div>
+  <div class="stat-card">
+    <h2>{{ teachers|length }}</h2>
+    <p>Faculty Members</p>
+  </div>
+  <div class="stat-card">
+    <h2>{{ files|length }}</h2>
+    <p>File Records</p>
+  </div>
+</div>
+
+{% if request.args.get('action') == 'create' %}
+<!-- Create Academic Year -->
+<div class="documents">
+  <h3>Create Academic Year</h3>
+  <form class="row g-3 mb-4" method="post" action="{{ url_for('create_year') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="col-md-4">
+      <label class="form-label">Academic Year</label>
+      <input name="year" class="form-control" placeholder="2025-2026" pattern="[0-9]{4}-[0-9]{4}" required>
+    </div>
+    <div class="col-md-2 align-self-end">
+      <button class="btn btn-primary w-100">Create</button>
+    </div>
+  </form>
+
+  {% if request.args.get('year') in years %}
+  <div class="alert alert-success">Folder tree for {{ request.args.get('year') }} created (demo only).</div>
+  <ul class="list-group mb-4">
+    <li class="list-group-item">
+      <strong>📁 {{ request.args.get('year') }}</strong>
+      <ul class="list-unstyled ms-3 mt-2">
+        {% for level in range(1, 5) %}
+        <li class="mb-1">📁 {{ level }}{% if level == 1 %}st{% elif level == 2 %}nd{% elif level == 3 %}rd{% else %}th{% endif %} Year
+          <ul class="list-unstyled ms-3">
+            <li>Sem {{ level * 2 - 1 }}</li>
+            <li>Sem {{ level * 2 }}</li>
+          </ul>
+        </li>
+        {% endfor %}
+      </ul>
+    </li>
+  </ul>
+
+  <!-- Copy Regulation Modal -->
+  <button class="btn btn-outline-secondary mb-4" data-bs-toggle="modal" data-bs-target="#copyModal">
+    Copy Regulation Subjects
+  </button>
+  <div class="modal fade" id="copyModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Copy existing folders and files for matching subjects?</h5>
+          <button class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <form method="post" action="{{ url_for('copy_regulation') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label">Target Academic Year</label>
+              <select class="form-select" name="year">
+                {% for year in years %}
+                <option {% if year == request.args.get('year') %}selected{% endif %}>{{ year }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Regulation</label>
+              <select class="form-select" name="regulation" id="regulationChoice" onchange="showRegulationMatches()">
+                {% for regulation in subjects|map(attribute='regulation')|unique %}
+                <option>{{ regulation }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div id="regulationMatches" class="mt-2 small">
+              {% for s in subjects %}
+              <div data-regulation="{{ s.regulation }}">{{ s.code }} - {{ s.name }} ({{ s.year }})</div>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">No</button>
+            <button class="btn btn-primary">Yes, Copy</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% elif request.args.get('action') == 'subjects' %}
+<!-- Add Subjects Wizard -->
+<div class="documents">
+  <h3>Add Subjects</h3>
+  <form class="row g-3 mb-4" method="get" action="{{ url_for('admin') }}">
+    <input type="hidden" name="action" value="subjects">
+    <div class="col-md-3">
+      <label class="form-label">Academic Year</label>
+      <select name="year" class="form-select">
+        {% for year in years %}
+        <option {% if request.args.get('year') == year %}selected{% endif %}>{{ year }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Semester</label>
+      <select name="sem" class="form-select">
+        {% for sem in range(1, 9) %}
+        <option value="{{ sem }}" {% if request.args.get('sem') == sem|string %}selected{% endif %}>Sem {{ sem }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">How many subjects?</label>
+      <input class="form-control" name="count" type="number" min="1" max="12" value="{{ count }}" required>
+    </div>
+    <div class="col-md-3 align-self-end">
+      <button class="btn btn-primary w-100">Next</button>
+    </div>
+  </form>
+
+  {% if request.args.get('year') and request.args.get('sem') %}
+  <form method="post" action="{{ url_for('save_subjects') }}" id="subjectWizard">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="year" value="{{ request.args.get('year') }}">
+    <input type="hidden" name="sem" value="{{ request.args.get('sem') }}">
+    <input type="hidden" name="count" value="{{ count }}">
+
+    <div class="progress mb-4">
+      <div id="wizardProgress" class="progress-bar" style="width:0%">0%</div>
+    </div>
+
+    {% for i in range(count) %}
+    <div class="card mb-4 subject-step" data-step="{{ i }}" style="{% if i != 0 %}display:none{% endif %}">
+      <div class="card-body">
+        <h5>Subject {{ i + 1 }} of {{ count }}</h5>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Subject Name</label>
+            <input class="form-control" name="name_{{ i }}" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Subject Code</label>
+            <input class="form-control" name="code_{{ i }}" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Regulation</label>
+            <input class="form-control" name="regulation_{{ i }}" value="R2023" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Subject Type</label>
+            <select class="form-select" name="type_{{ i }}">
+              {% for type in ['Major Course', 'Minor Course', 'Value Added Course', 'Other'] %}
+              <option>{{ type }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Subject Format</label>
+            <select class="form-select" name="format_{{ i }}">
+              {% for format in ['Theory', 'Practical', 'Theory cum Practical'] %}
+              <option>{{ format }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Faculty In-charge (Ctrl-click for multiple)</label>
+            <select class="form-select" name="teachers_{{ i }}" multiple size="2">
+              {% for t in teachers %}
+              <option value="{{ t.email }}">{{ t.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+    <div id="wizardReview" class="d-none">
+      <h5>Review Subjects</h5>
+      <div class="table-responsive">
+        <table class="table table-bordered">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Code</th>
+              <th>Regulation</th>
+              <th>Type</th>
+              <th>Format</th>
+              <th>Faculty</th>
+            </tr>
+          </thead>
+          <tbody id="reviewRows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-outline-secondary" id="wizardBack" onclick="wizardMove(-1)" disabled>Back</button>
+      <button type="button" class="btn btn-primary" id="wizardNext" onclick="wizardMove(1)">Next</button>
+      <button type="submit" class="btn btn-success d-none" id="wizardSave">Save Subjects</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+
+{% elif request.args.get('action') == 'update' %}
+<!-- Admin Explorer with Editing Permissions -->
+<div class="documents">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h3>Update Academic Year</h3>
+    <a class="btn btn-outline-primary" href="{{ url_for('admin', action='subjects') }}">Add Subjects</a>
+  </div>
+
+  {% set can_edit = true %}{% include '_explorer.html' %}
+
+  <!-- Admin File Upload -->
+  <div class="mt-5">
+    <h3>Upload File (demo only)</h3>
+    <form class="row g-3 mb-4" method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data" id="adminUpload">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="col-md-4">
+        <label class="form-label">Subject</label>
+        <select class="form-select" id="adminSubject" onchange="adminUploadChoice()" required>
+          <option value="">Choose subject</option>
+          {% for s in subjects %}
+          <option value="{{ loop.index0 }}">{{ s.year }} / Sem {{ s.sem }} / {{ s.code }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Folder</label>
+        <select class="form-select" name="category" id="adminFolder" required></select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">File</label>
+        <input type="file" class="form-control" name="file" id="adminFile" accept=".pdf,.docx,.pptx,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.zip" required onchange="adminUploadChoice()">
+      </div>
+      <input type="hidden" name="year">
+      <input type="hidden" name="sem">
+      <input type="hidden" name="code">
+      <input type="hidden" name="final_name">
+      <div class="col-12">
+        <button class="btn btn-primary" type="submit">Upload (demo only)</button>
+      </div>
+    </form>
+  </div>
+
+  <script type="application/json" id="adminSubjects">
+    [{% for s in subjects %}{"year":{{ s.year|tojson }},"sem":{{ s.sem }},"code":{{ s.code|tojson }},"folders":{{ folders.get((s.year,s.sem,s.code), [])|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]
+  </script>
+
+  <!-- Manage Subject Folders and Faculty -->
+  <div class="mt-5">
+    <h3>Manage Subject Folders and Faculty</h3>
+    {% for s in subjects %}
+    <div class="card mb-3">
+      <div class="card-body">
+        <strong>{{ s.code }} - {{ s.name }} ({{ s.year }}, Sem {{ s.sem }})</strong>
+        <div class="row g-3 mt-3">
+          <div class="col-md-6">
+            <form method="post" action="{{ url_for('assign_faculty') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="year" value="{{ s.year }}">
+              <input type="hidden" name="sem" value="{{ s.sem }}">
+              <input type="hidden" name="code" value="{{ s.code }}">
+              <label class="form-label">Faculty In-charge</label>
+              <select class="form-select mb-2" multiple name="teachers" size="2">
+                {% for t in teachers %}
+                <option value="{{ t.email }}" {% if t.email in s.teachers %}selected{% endif %}>{{ t.name }}</option>
+                {% endfor %}
+              </select>
+              <button class="btn btn-primary btn-sm">Update Faculty</button>
+            </form>
+          </div>
+          <div class="col-md-6">
+            <form method="post" action="{{ url_for('add_folder') }}" class="row g-2 mb-3">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="year" value="{{ s.year }}">
+              <input type="hidden" name="sem" value="{{ s.sem }}">
+              <input type="hidden" name="code" value="{{ s.code }}">
+              <div class="col">
+                <input class="form-control form-control-sm" name="name" placeholder="New folder" required>
+              </div>
+              <div class="col-auto">
+                <button class="btn btn-success btn-sm">Add</button>
+              </div>
+            </form>
+            <div class="mt-2">
+              {% for folder in folders.get((s.year, s.sem, s.code), []) %}
+              <div class="d-flex gap-2 align-items-center mb-2 flex-wrap">
+                <small class="me-2">📁 {{ folder }}</small>
+                <form class="d-flex gap-2" method="post" action="{{ url_for('rename_folder') }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="year" value="{{ s.year }}">
+                  <input type="hidden" name="sem" value="{{ s.sem }}">
+                  <input type="hidden" name="code" value="{{ s.code }}">
+                  <input type="hidden" name="old" value="{{ folder }}">
+                  <input class="form-control form-control-sm" name="name" placeholder="Rename" aria-label="New folder name" required style="width: 140px;">
+                  <button class="btn btn-outline-primary btn-sm">Rename</button>
+                </form>
+                <form method="post" action="{{ url_for('delete_folder') }}" onsubmit="return confirm('Delete folder and demo files?')">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="year" value="{{ s.year }}">
+                  <input type="hidden" name="sem" value="{{ s.sem }}">
+                  <input type="hidden" name="code" value="{{ s.code }}">
+                  <input type="hidden" name="name" value="{{ folder }}">
+                  <button class="btn btn-outline-danger btn-sm">Delete</button>
+                </form>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{% elif request.args.get('view') == 'search' %}
+<!-- Search Files -->
+<div class="documents">
+  <h3>Search Files</h3>
+  <form method="get" class="row g-3 mb-4">
+    <input type="hidden" name="view" value="search">
+    <div class="col-md-3">
+      <input name="keyword" class="form-control search" placeholder="Keyword" value="{{ request.args.get('keyword', '') }}">
+    </div>
+    <div class="col-md-2">
+      <select name="code" class="form-select">
+        <option value="">All Courses</option>
+        {% for s in subjects %}
+        <option {% if request.args.get('code') == s.code %}selected{% endif %}>{{ s.code }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <select name="year" class="form-select">
+        <option value="">All Years</option>
+        {% for year in years %}
+        <option {% if request.args.get('year') == year %}selected{% endif %}>{{ year }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <select name="sem" class="form-select">
+        <option value="">All Semesters</option>
+        {% for sem in range(1, 9) %}
+        <option value="{{ sem }}" {% if request.args.get('sem') == sem|string %}selected{% endif %}>Sem {{ sem }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <select name="category" class="form-select">
+        <option value="">All Categories</option>
+        {% for category in categories %}
+        <option {% if request.args.get('category') == category %}selected{% endif %}>{{ category }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-primary" type="submit">Search</button>
+    </div>
+  </form>
+
+  {% if not matches %}
+  <div class="alert alert-warning">No matching files found.</div>
+  {% else %}
+  <div class="table-responsive">
+    <table class="table table-striped table-bordered">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Course</th>
+          <th>Year</th>
+          <th>Semester</th>
+          <th>Category</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in matches %}
+        <tr>
+          <td>{{ f.name }}</td>
+          <td>{{ f.code }}</td>
+          <td>{{ f.year }}</td>
+          <td>{{ f.sem }}</td>
+          <td>{{ f.category }}</td>
+          <td>
+            <button class="btn btn-outline-primary btn-sm" onclick="demoOpen('{{ f.name|e }}')">View</button>
+            <button class="btn btn-outline-secondary btn-sm" onclick="demoDownload('{{ f.name|e }}')">Download</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+{% endif %}
+
+<!-- Academic Years Table -->
+<div class="documents mt-5">
+  <h3>Academic Years</h3>
+  <div class="table-responsive">
+    <table class="table table-bordered table-striped">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Academic Year</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for year in years %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ year }}</td>
+          <td><span class="status">Created</span></td>
+          <td><a href="{{ url_for('admin', action='subjects', year=year, sem=1) }}" class="btn btn-outline-primary btn-sm">Add Subjects</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Subjects Table -->
+<div class="documents mt-4">
+  <h3>Subjects</h3>
+  <div class="table-responsive">
+    <table class="table table-bordered table-striped">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Code</th>
+          <th>Regulation</th>
+          <th>Type</th>
+          <th>Format</th>
+          <th>Faculty In-charge</th>
+          <th>Semester</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in subjects %}
+        <tr>
+          <td>{{ s.name }}</td>
+          <td>{{ s.code }}</td>
+          <td>{{ s.regulation }}</td>
+          <td>{{ s.type }}</td>
+          <td>{{ s.format }}</td>
+          <td>{{ s.teachers|join(', ') }}</td>
+          <td>{{ s.year }} / Sem {{ s.sem }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

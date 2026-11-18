@@ -1,0 +1,265 @@
+{% extends 'base.html' %}
+{% block content %}
+<!-- Welcome Section -->
+<div class="welcome">
+  <h1>Welcome, {{ session['name'] }}</h1>
+  <p>Course material portal (demo only).</p>
+</div>
+
+<!-- Statistics Cards -->
+<div class="stats">
+  <div class="stat-card">
+    <h2>{{ assigned|length }}</h2>
+    <p>Assigned Subjects</p>
+  </div>
+  <div class="stat-card">
+    <h2>{{ files|length }}</h2>
+    <p>Total File Records</p>
+  </div>
+  <div class="stat-card">
+    <h2>{{ academic_years|length }}</h2>
+    <p>Academic Years</p>
+  </div>
+  <div class="stat-card">
+    <h2>{{ categories|length }}</h2>
+    <p>Categories</p>
+  </div>
+</div>
+
+<!-- Activity Cards -->
+<div class="row g-3 mb-4">
+  {% for title, view, info in [('View', 'explorer', 'Browse all academic material'), ('Upload', 'upload', 'Add demo files to assigned subjects'), ('Edit', 'edit', 'Create a new demo file version')] %}
+  <div class="col-12 col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h4>{{ title }}</h4>
+        <p>{{ info }}</p>
+        <a class="btn btn-primary" href="{{ url_for('teacher', view=view) }}">{{ title }}</a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<a class="btn btn-outline-secondary mb-4" href="{{ url_for('teacher', view='search') }}">Search Files</a>
+
+{% if not assigned %}
+<div class="alert alert-warning">No subjects have been assigned to you.</div>
+{% endif %}
+
+{% if request.args.get('view', 'explorer') == 'explorer' %}
+<!-- Teacher Explorer (Read-only) -->
+<div class="documents">
+  {% set can_edit = false %}{% include '_explorer.html' %}
+</div>
+{% endif %}
+
+{% if request.args.get('view') == 'upload' %}
+<!-- Upload Form -->
+<div class="documents">
+  <h3>Upload (demo only)</h3>
+  <form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data" id="uploadForm" data-mode="upload">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div id="dropZone" class="drop-zone rounded p-4 text-center mb-3">
+      Drop a file here or choose one below<br>
+      <small>PDF, DOCX, PPTX, XLSX, CSV, images, ZIP; max 25 MB</small>
+    </div>
+    <input class="form-control mb-3" type="file" name="file" id="uploadFile" accept=".pdf,.docx,.pptx,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.zip" required>
+    <div id="uploadAlert" class="alert alert-danger d-none"></div>
+    <div class="row g-3">
+      <div class="col-sm-6">
+        <label class="form-label">Academic Year</label>
+        <select class="form-select cascade-year" name="year" required>
+          <option value="">Choose year</option>
+        </select>
+      </div>
+      <div class="col-sm-6">
+        <label class="form-label">Semester</label>
+        <select class="form-select cascade-sem" name="sem" required>
+          <option value="">Choose semester</option>
+        </select>
+      </div>
+      <div class="col-sm-6">
+        <label class="form-label">Subject</label>
+        <select class="form-select cascade-subject" name="code" required>
+          <option value="">Choose subject</option>
+        </select>
+      </div>
+      <div class="col-sm-6">
+        <label class="form-label">Folder / Category</label>
+        <select class="form-select cascade-folder" name="category" required>
+          <option value="">Choose folder</option>
+        </select>
+      </div>
+      <div class="col-12">
+        <label class="form-label">Optional Title</label>
+        <input class="form-control" name="title" id="uploadTitle" placeholder="Unit 2">
+      </div>
+    </div>
+    <p class="mt-3">Preview: <strong id="uploadPreview">Choose a file and subject</strong></p>
+    <input type="hidden" name="final_name" id="finalName">
+    <input type="hidden" name="hash" id="fileHash">
+    <button type="button" id="uploadButton" class="btn btn-primary" onclick="prepareUpload()">Upload</button>
+  </form>
+
+  <!-- Version Modal -->
+  <div class="modal fade" id="versionModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">File already exists</h5>
+          <button class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" id="versionText"></div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" onclick="document.getElementById('uploadForm').submit()">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="assignedData">{{ assigned|tojson }}</script>
+<script type="application/json" id="allFileData">{{ files|tojson }}</script>
+<script type="application/json" id="subjectFolders">
+  [{% for s in assigned %}{"year":{{ s.year|tojson }},"sem":{{ s.sem }},"code":{{ s.code|tojson }},"folders":{{ folders.get((s.year,s.sem,s.code), [])|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]
+</script>
+{% endif %}
+
+{% if request.args.get('view') == 'edit' %}
+<!-- Edit Form -->
+<div class="documents">
+  <h3>Edit (demo only)</h3>
+  <form method="post" action="{{ url_for('save_edit') }}" id="editForm" data-mode="edit">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="row g-3">
+      <div class="col-sm-6">
+        <label class="form-label">Academic Year</label>
+        <select class="form-select cascade-year" name="year" required></select>
+      </div>
+      <div class="col-sm-6">
+        <label class="form-label">Semester</label>
+        <select class="form-select cascade-sem" name="sem" required></select>
+      </div>
+      <div class="col-sm-6">
+        <label class="form-label">Subject</label>
+        <select class="form-select cascade-subject" name="code" required></select>
+      </div>
+      <div class="col-sm-6">
+        <label class="form-label">Folder</label>
+        <select class="form-select cascade-folder" name="category" required></select>
+      </div>
+      <div class="col-12">
+        <label class="form-label">File</label>
+        <select class="form-select" name="filename" id="editFile" required></select>
+      </div>
+    </div>
+    <div class="row g-3 mt-3">
+      <div class="col-md-8">
+        <div class="mb-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="insertText('**', '**')">Bold</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="insertText('*', '*')">Italic</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="insertText('- ', '')">Bullet</button>
+        </div>
+        <textarea class="form-control" id="editText" name="content" rows="9" placeholder="Demo editor text (not saved as a real document)"></textarea>
+        <button class="btn btn-primary mt-3" type="submit">Save as new version</button>
+      </div>
+      <div class="col-md-4">
+        <h6>Version History</h6>
+        <ul class="list-group" id="editHistory"></ul>
+      </div>
+    </div>
+  </form>
+  <div class="alert alert-secondary mt-3">OneDrive Office online editor will be embedded here in the real version.</div>
+</div>
+
+<script type="application/json" id="assignedData">{{ assigned|tojson }}</script>
+<script type="application/json" id="allFileData">{{ files|tojson }}</script>
+<script type="application/json" id="subjectFolders">
+  [{% for s in assigned %}{"year":{{ s.year|tojson }},"sem":{{ s.sem }},"code":{{ s.code|tojson }},"folders":{{ folders.get((s.year,s.sem,s.code), [])|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]
+</script>
+{% endif %}
+
+{% if request.args.get('view') == 'search' %}
+<!-- Search Files -->
+<div class="documents">
+  <h3>Search Files</h3>
+  <form method="get" class="row g-3 mb-4">
+    <input type="hidden" name="view" value="search">
+    <div class="col-md-3">
+      <input class="form-control search" name="keyword" placeholder="Keyword" value="{{ request.args.get('keyword','') }}">
+    </div>
+    <div class="col-md-2">
+      <select class="form-select" name="code">
+        <option value="">All Courses</option>
+        {% for s in subjects %}
+        <option value="{{ s.code }}" {% if request.args.get('code') == s.code %}selected{% endif %}>{{ s.code }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <select class="form-select" name="year">
+        <option value="">All Years</option>
+        {% for year in years %}
+        <option {% if request.args.get('year') == year %}selected{% endif %}>{{ year }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <select class="form-select" name="sem">
+        <option value="">All Semesters</option>
+        {% for sem in range(1, 9) %}
+        <option value="{{ sem }}" {% if request.args.get('sem') == sem|string %}selected{% endif %}>Sem {{ sem }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <select class="form-select" name="category">
+        <option value="">All Categories</option>
+        {% for category in categories %}
+        <option {% if request.args.get('category') == category %}selected{% endif %}>{{ category }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-primary" type="submit">Search</button>
+    </div>
+  </form>
+
+  {% if matches %}
+  <div class="table-responsive">
+    <table class="table table-striped table-bordered">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Course</th>
+          <th>Year</th>
+          <th>Semester</th>
+          <th>Category</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in matches %}
+        <tr>
+          <td>{{ f.name }}</td>
+          <td>{{ f.code }}</td>
+          <td>{{ f.year }}</td>
+          <td>{{ f.sem }}</td>
+          <td>{{ f.category }}</td>
+          <td>
+            <button class="btn btn-outline-primary btn-sm" onclick="demoOpen('{{ f.name|e }}')">View</button>
+            <button class="btn btn-outline-secondary btn-sm" onclick="demoDownload('{{ f.name|e }}')">Download</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="alert alert-warning">No matching files found.</div>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
